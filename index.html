@@ -17,6 +17,7 @@
             min-height: 100vh;
             color: #fff;
             padding: 20px;
+            padding-bottom: 200px;
         }
         
         .container {
@@ -36,8 +37,6 @@
             border-radius: 20px;
             padding: 15px;
             margin-bottom: 20px;
-            max-height: 50vh;
-            overflow-y: auto;
         }
         
         .track {
@@ -212,16 +211,102 @@
             margin-bottom: 10px;
         }
         
-        .loading {
+        .add-track {
+            background: rgba(233, 69, 96, 0.2);
+            border: 2px dashed #e94560;
+            border-radius: 12px;
+            padding: 20px;
             text-align: center;
-            padding: 40px;
-            color: #888;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
         }
         
-        .error {
-            text-align: center;
-            padding: 40px;
+        .add-track:hover {
+            background: rgba(233, 69, 96, 0.3);
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: #1a1a2e;
+            padding: 30px;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        .modal h3 {
+            margin-bottom: 20px;
             color: #e94560;
+        }
+        
+        .modal input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-size: 16px;
+        }
+        
+        .modal input::placeholder {
+            color: #666;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        .modal-btn.primary {
+            background: #e94560;
+            color: #fff;
+        }
+        
+        .modal-btn.secondary {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        
+        .delete-btn {
+            opacity: 0;
+            transition: opacity 0.3s;
+            color: #e94560;
+            font-size: 18px;
+            padding: 5px;
+        }
+        
+        .track:hover .delete-btn {
+            opacity: 1;
         }
     </style>
 </head>
@@ -229,8 +314,14 @@
     <div class="container">
         <h1>🎵 Моя Коллекция</h1>
         
+        <div class="add-track" onclick="openModal()">
+            + Добавить трек
+        </div>
+        
         <div id="trackList" class="track-list">
-            <div class="loading">Загрузка треков...</div>
+            <div style="text-align: center; padding: 40px; color: #888;">
+                Пока нет треков.<br>Нажми "Добавить трек" выше.
+            </div>
         </div>
     </div>
     
@@ -287,15 +378,22 @@
         </div>
     </div>
 
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <h3>Добавить трек</h3>
+            <input type="text" id="trackName" placeholder="Название трека">
+            <input type="text" id="trackUrl" placeholder="Ссылка на MP3 (Яндекс.Диск)">
+            <div class="modal-buttons">
+                <button class="modal-btn secondary" onclick="closeModal()">Отмена</button>
+                <button class="modal-btn primary" onclick="addTrack()">Добавить</button>
+            </div>
+        </div>
+    </div>
+
     <audio id="audioPlayer"></audio>
 
     <script>
-        // ═══════════════════════════════════════════════════════════
-        // НАСТРОЙКА: Вставь сюда свою публичную ссылку на Яндекс.Диск
-        // ═══════════════════════════════════════════════════════════
-        const YANDEX_DISK_PUBLIC_URL = 'https://disk.yandex.ru/d/5b5W_zq3Y-JTtA';
-        
-        // Массив треков (заполняется автоматически)
+        // Треки хранятся в памяти (можно расширить для сохранения в localStorage)
         let tracks = [];
         let currentTrackIndex = 0;
         let isPlaying = false;
@@ -315,60 +413,93 @@
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
         const trackListEl = document.getElementById('trackList');
+        const modal = document.getElementById('modal');
         
-        // Получаем прямые ссылки на MP3 из публичной папки Яндекс.Диска
-        async function loadTracksFromYandexDisk() {
-            try {
-                // Извлекаем ключ публичной папки из ссылки
-                const publicKey = YANDEX_DISK_PUBLIC_URL.split('/').pop();
-                
-                // API Яндекс.Диска для получения содержимого публичной папки
-                const apiUrl = `https://cloud-api.yandex.net/v1/disk/public/resources?public_key=${publicKey}&limit=100`;
-                
-                const response = await fetch(apiUrl);
-                if (!response.ok) throw new Error('Ошибка загрузки');
-                
-                const data = await response.json();
-                
-                // Фильтруем только MP3 файлы
-                const items = data._embedded?.items || [];
-                tracks = items
-                    .filter(item => item.name.endsWith('.mp3'))
-                    .map(item => ({
-                        name: item.name.replace('.mp3', ''),
-                        url: item.file,
-                        artist: 'Моя Коллекция'
-                    }));
-                
-                if (tracks.length === 0) {
-                    trackListEl.innerHTML = '<div class="error">MP3 файлы не найдены. Загрузи музыку в папку Яндекс.Диска.</div>';
-                    return;
-                }
-                
+        // Загружаем треки из localStorage при старте
+        function loadTracks() {
+            const saved = localStorage.getItem('myMusicTracks');
+            if (saved) {
+                tracks = JSON.parse(saved);
                 renderTrackList();
-                
-            } catch (error) {
-                console.error('Ошибка:', error);
-                trackListEl.innerHTML = `
-                    <div class="error">
-                        Не удалось загрузить треки.<br>
-                        Проверь, что папка публичная.<br>
-                        <small>${error.message}</small>
-                    </div>
-                `;
             }
         }
         
+        function saveTracks() {
+            localStorage.setItem('myMusicTracks', JSON.stringify(tracks));
+        }
+        
         function renderTrackList() {
+            if (tracks.length === 0) {
+                trackListEl.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #888;">
+                        Пока нет треков.<br>Нажми "Добавить трек" выше.
+                    </div>
+                `;
+                return;
+            }
+            
             trackListEl.innerHTML = tracks.map((track, index) => `
                 <div class="track ${index === currentTrackIndex ? 'active' : ''}" onclick="playTrack(${index})">
                     <div class="track-number">${index + 1}</div>
                     <div class="track-info">
                         <div class="track-name">${track.name}</div>
-                        <div class="track-artist">${track.artist}</div>
+                        <div class="track-artist">Трек ${index + 1}</div>
                     </div>
+                    <span class="delete-btn" onclick="deleteTrack(event, ${index})">🗑</span>
                 </div>
             `).join('');
+        }
+        
+        function openModal() {
+            modal.classList.add('active');
+            document.getElementById('trackName').focus();
+        }
+        
+        function closeModal() {
+            modal.classList.remove('active');
+            document.getElementById('trackName').value = '';
+            document.getElementById('trackUrl').value = '';
+        }
+        
+        function addTrack() {
+            const name = document.getElementById('trackName').value.trim();
+            const url = document.getElementById('trackUrl').value.trim();
+            
+            if (!name || !url) {
+                alert('Заполни оба поля!');
+                return;
+            }
+            
+            // Преобразуем ссылку Яндекс.Диска в прямую ссылку
+            let directUrl = url;
+            
+            // Если это ссылка вида https://disk.yandex.ru/i/XXXX
+            if (url.includes('disk.yandex.ru/i/')) {
+                const fileId = url.split('/i/')[1].split('?')[0];
+                directUrl = `https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key=${encodeURIComponent(url)}`;
+            }
+            
+            tracks.push({
+                name: name,
+                url: url, // Используем оригинальную ссылку
+                artist: 'Моя Коллекция'
+            });
+            
+            saveTracks();
+            renderTrackList();
+            closeModal();
+        }
+        
+        function deleteTrack(event, index) {
+            event.stopPropagation();
+            if (confirm('Удалить трек?')) {
+                tracks.splice(index, 1);
+                if (currentTrackIndex >= tracks.length) {
+                    currentTrackIndex = 0;
+                }
+                saveTracks();
+                renderTrackList();
+            }
         }
         
         function formatTime(seconds) {
@@ -379,18 +510,23 @@
         }
         
         function playTrack(index) {
+            if (tracks.length === 0) return;
+            
             currentTrackIndex = index;
             const track = tracks[index];
             
             audio.src = track.url;
             nowPlaying.textContent = track.name;
             
-            // Обновляем активный трек в списке
             document.querySelectorAll('.track').forEach((el, i) => {
                 el.classList.toggle('active', i === index);
             });
             
-            audio.play();
+            audio.play().catch(e => {
+                console.error('Ошибка воспроизведения:', e);
+                alert('Не удалось воспроизвести. Попробуй другую ссылку или формат файла.');
+            });
+            
             isPlaying = true;
             updatePlayButton();
         }
@@ -433,7 +569,7 @@
             loopBtn.classList.toggle('active', isLooping);
         }
         
-        // Обработчики событий
+        // Обработчики
         playBtn.addEventListener('click', togglePlay);
         nextBtn.addEventListener('click', playNext);
         prevBtn.addEventListener('click', playPrev);
@@ -465,9 +601,14 @@
             audio.currentTime = percent * audio.duration;
         });
         
+        // Закрытие модалки по клику вне её
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        
         // Инициализация
         audio.volume = 0.7;
-        loadTracksFromYandexDisk();
+        loadTracks();
     </script>
 </body>
 </html>
